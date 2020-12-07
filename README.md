@@ -25,6 +25,9 @@
 * 不能引入包含merge标签的布局到ViewStub中。否则会报错：android.view.InflateException: Binary XML file line #1:  can be used only with a valid ViewGroup root and attachToRoot=true
 
 ## RenderScript
+## 异常，系统Bug
+### Toast异常处理
+
 ## 调试
 * 查询当前屏幕界面所在(对应)的Activity
 * inspect 当前正在调试的前台APP的UI层级和信息
