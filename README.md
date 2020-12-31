@@ -37,6 +37,7 @@
 ### FPS检测
 帧率检测是UI卡顿检测的一环，可通过Choreographer监听实现，android/view/Choreographer.java
 
+
 	public void onVsync(long timestampNanos, long physicalDisplayId, int frame) {
 	    ......
 	    mTimestampNanos = timestampNanos;
@@ -75,6 +76,7 @@ doFrame 函数主要做下面几件事
 	    ......
 	}
 
+![](./Choreographer.jpg)
 由于 Choreographer 的位置，许多性能监控的手段都是利用 Choreographer 来做的，除了自带的掉帧计算，Choreographer 提供的 FrameCallback 和 FrameInfo 都给 App 暴露了接口，让 App 开发者可以通过这些方法监控自身 App 的性能，其中常用的方法如下：
 
 * 利用 FrameCallback 的 doFrame 回调
