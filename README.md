@@ -35,4 +35,100 @@
 * 属性动画，可以在开发者选项中调整大小和时长缩放，比如加大时长缩放值，则可以以类似慢镜头的方式查看动画效果
 
 ### FPS检测
-帧率检测是UI卡顿检测的一环，可通过Choreographer监听实现
+帧率检测是UI卡顿检测的一环，可通过Choreographer监听实现，android/view/Choreographer.java
+
+	public void onVsync(long timestampNanos, long physicalDisplayId, int frame) {
+	    ......
+	    mTimestampNanos = timestampNanos;
+	    mFrame = frame;
+	    Message msg = Message.obtain(mHandler, this);
+	    msg.setAsynchronous(true);
+	    mHandler.sendMessageAtTime(msg, timestampNanos / TimeUtils.NANOS_PER_MS);
+	}
+	public void run() {
+	    mHavePendingVsync = false;
+	    doFrame(mTimestampNanos, mFrame);
+	}
+
+doFrame 函数主要做下面几件事
+
+* 计算掉帧逻辑
+* 记录帧绘制信息
+* 执行 CALLBACK_INPUT、CALLBACK_ANIMATION、CALLBACK_INSETS_ANIMATION、CALLBACK_TRAVERSAL、CALLBACK_COMMIT
+
+	void doFrame(long frameTimeNanos, int frame) {
+	    final long startNanos;
+	    synchronized (mLock) {
+	        ......
+	        long intendedFrameTimeNanos = frameTimeNanos;
+	        startNanos = System.nanoTime();
+	        final long jitterNanos = startNanos - frameTimeNanos;
+	        if (jitterNanos >= mFrameIntervalNanos) {
+	            final long skippedFrames = jitterNanos / mFrameIntervalNanos;
+	            if (skippedFrames >= SKIPPED_FRAME_WARNING_LIMIT) {
+	                Log.i(TAG, "Skipped " + skippedFrames + " frames!  "
+	                        + "The application may be doing too much work on its main thread.");
+	            }
+	        }
+	        ......
+	    }
+	    ......
+	}
+
+由于 Choreographer 的位置，许多性能监控的手段都是利用 Choreographer 来做的，除了自带的掉帧计算，Choreographer 提供的 FrameCallback 和 FrameInfo 都给 App 暴露了接口，让 App 开发者可以通过这些方法监控自身 App 的性能，其中常用的方法如下：
+
+* 利用 FrameCallback 的 doFrame 回调
+* 利用 FrameInfo 进行监控
+ 使用 ：adb shell dumpsys gfxinfo framestats
+ 示例 ：adb shell dumpsys gfxinfo com.meizu.flyme.launcher framestats
+* 利用 SurfaceFlinger 进行监控
+ 使用 ：adb shell dumpsys SurfaceFlinger --latency
+ 示例 ：adb shell dumpsys SurfaceFlinger --latency com.meizu.flyme.launcher/com.meizu.flyme.launcher.Launcher#0
+* 利用 SurfaceFlinger PageFlip 机制进行监控
+ 使用 ： adb service call SurfaceFlinger 1013
+ 备注：需要系统权限
+* Choreographer 自身的掉帧计算逻辑
+* BlockCanary 基于 Looper 的性能监控
+
+### Blockcanary 
+Blockcanary 计算做性能监控使用的是 Looper 的消息机制，通过对 MessageQueue 中每一个 Message 的前后进行记录，打到监控性能的目的
+
+	public static void loop() {
+	    ...
+	    for (;;) {
+	        ...
+	        // This must be in a local variable, in case a UI event sets the logger
+	        Printer logging = me.mLogging;
+	        if (logging != null) {
+	            logging.println(">>>>> Dispatching to " + msg.target + " " +
+	                    msg.callback + ": " + msg.what);
+	        }
+	        msg.target.dispatchMessage(msg);
+	        if (logging != null) {
+	            logging.println("<<<<< Finished to " + msg.target + " " + msg.callback);
+	        }
+	        ...
+	    }
+	}
+
+创建自定义的Printer设置给Looper
+
+	Looper.getMainLooper().setMessageLogging(mainLooperPrinter);
+	//Printer
+	public void println(String x) {
+	    if (!mStartedPrinting) {
+	        mStartTimeMillis = System.currentTimeMillis();
+	        mStartThreadTimeMillis = SystemClock.currentThreadTimeMillis();
+	        mStartedPrinting = true;
+	    } else {
+	        final long endTime = System.currentTimeMillis();
+	        mStartedPrinting = false;
+	        if (isBlock(endTime)) {
+	            notifyBlockEvent(endTime);
+	        }
+	    }
+	}
+	
+	private boolean isBlock(long endTime) {
+	    return endTime - mStartTimeMillis > mBlockThresholdMillis;
+	}

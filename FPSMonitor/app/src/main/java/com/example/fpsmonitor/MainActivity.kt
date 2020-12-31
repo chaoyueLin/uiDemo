@@ -25,6 +25,7 @@ class MainActivity : AppCompatActivity() {
         FpsMonitor.startMonitor { fps ->
             Log.d(TAG, String.format("fps: %s", fps))
         }
+        Thread.sleep(400)
     }
 
     fun stopMonitorFps() {
