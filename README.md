@@ -3,6 +3,13 @@
 * 1.RelativeLayout会让子View调用2次onMeasure，LinearLayout 在有weight时，也会调用子View2次onMeasure
 * 2.RelativeLayout的子View如果高度和RelativeLayout不同，则会引发效率问题，当子View很复杂时，这个问题会更加严重。如果可以，尽量使用padding代替margin。
 
+## ShapeDrawable和BitmpaDrawable
+
+| 方案 | 原理 | 特点 |
+|  ----  | ----  |
+|使用PNG图片（BitmapDrawable）| 解码PNG图片生成Bitmap，传到底层，由GPU渲染| 图片解码消耗CPU运算资源， Bitmap占用内存大，绘制慢
+|使用XML或Java代码实现（ShapeDrawable）|直接将Shape信息传到底层，由GPU渲染|消耗CPU资源少，占用内存小，绘制快
+
 ## RenderThread
 * 5.1引入了renderthread线程，可以讲draw操作从UIThread解放出来，这样做的好处是，UIThread将绘制指令sync给renderthread以后可以继续执行measure/layout操作，非常有利于提升设备操作体验
 ![](./renderThread.jpg)
@@ -27,7 +34,48 @@
 ## RenderScript
 ## 异常，系统Bug
 ### Toast异常处理
+#### BadTokenException
+我们知道在Android上，任何视图的显示都要依赖于一个视图窗口Window，同样Toast的显示也需要一个窗口，前文已经分析了这个窗口的类型就是TYPE_TOAST，是一个系统窗口，这个窗口最终会被WindowManagerService(WMS)标记管理。但是我们的普通应用程序怎么能拥有添加系统窗口的权限呢？查看源码后发现需要以下几个步骤：
 
+* 当显示一个Toast时，NMS会生成一个token，而NMS本身就是一个系统级的服务，所以由它生成的token必然拥有权限添加系统窗口。
+* NMS通过ITransientNotification也就是tn对象，将生成的token回传到我们自己的应用程序进程中。
+* 应用程序调用handleShow方法，去向WindowManager添加窗口。
+* WindowManager检查当前窗口的token是否有效，如果有效，则添加窗口展示Toast；如果无效，则抛出上述异常，Crash发生。
+
+![](./token.png)
+
+token的衍生，Toast被windowmanager添加的的类型是TYPE_TOAST,我们使用windowmanager.addView时，token会默认生成一个
+
+	public void setDefaultToken(IBinder token) {
+	        mDefaultToken = token;
+	    }
+	
+	    @Override
+	    public void addView(@NonNull View view, @NonNull ViewGroup.LayoutParams params) {
+	        applyDefaultToken(params);
+	        mGlobal.addView(view, params, mContext.getDisplay(), mParentWindow);
+	    }
+	
+	    @Override
+	    public void updateViewLayout(@NonNull View view, @NonNull ViewGroup.LayoutParams params) {
+	        applyDefaultToken(params);
+	        mGlobal.updateViewLayout(view, params);
+	    }
+	
+	    private void applyDefaultToken(@NonNull ViewGroup.LayoutParams params) {
+	        // Only use the default token if we don't have a parent window.
+	        if (mDefaultToken != null && mParentWindow == null) {
+	            if (!(params instanceof WindowManager.LayoutParams)) {
+	                throw new IllegalArgumentException("Params must be WindowManager.LayoutParams");
+	            }
+	
+	            // Only use the default token if we don't already have a token.
+	            final WindowManager.LayoutParams wparams = (WindowManager.LayoutParams) params;
+	            if (wparams.token == null) {
+	                wparams.token = mDefaultToken;
+	            }
+	        }
+	    }
 ## 调试
 * 查询当前屏幕界面所在(对应)的Activity
 * inspect 当前正在调试的前台APP的UI层级和信息
